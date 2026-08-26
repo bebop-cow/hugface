@@ -1,9 +1,10 @@
-from transformers import pipeline
+from transformers import AutoTokenizer
 
 # Create a sentiment-analysis pipeline using FinBERT
-clf = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
 
-headline = "Company X posts record quarterly profit, raises full-year guidance"
+headline = "Q3 profit beats estimates; $AAPL raises guidance"
 
-result = clf(headline)          
-print(result)                 
+# See the human-readable pieces the headline breaks into
+tokens = tokenizer.tokenize(headline)         
+print(tokens)                 
