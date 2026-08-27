@@ -7,6 +7,7 @@ import torch
 import numpy as np
 from transformers import AutoModelForSequenceClassification
 from sklearn.metrics import accuracy_score, f1_score
+from transformers import Trainer, TrainingArguments
 
 tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
 
@@ -80,6 +81,22 @@ def compute_metrics(eval_pred):
         "accuracy": accuracy_score(labels, preds),
         "f1_macro": f1_score(labels, preds, average="macro"),
     }
+
+args = TrainingArguments(
+    output_dir="./finbert-finetuned",
+    per_device_eval_batch_size=32,
+    use_mps_device=True,          # your Apple Silicon GPU
+    report_to="none",             # skip external logging
+)
+
+baseline_trainer = Trainer(
+    model=model,
+    args=args,
+    eval_dataset=train_tok,            # blank: which tokenized set do we evaluate on?
+    compute_metrics=compute_metrics,
+)
+
+print(baseline_trainer.evaluate())
 
 # print(train_df["labels"].value_counts(normalize = True))
 # print(test_df["labels"].value_counts(normalize = True))
