@@ -49,3 +49,11 @@ for r in score_headlines([
     "Board to meet Thursday to review options",
 ]):
     print(r)
+
+# Map string labels → integer IDs matching FinBERT's id2label
+label2id = {"positive": 0, "negative": 1, "neutral": ????}   # blank: neutral's id
+
+df["labels"] = df["label"].map(label2id)
+
+print(df[["label", "labels"]].head())
+print(df["labels"].value_counts()) 
