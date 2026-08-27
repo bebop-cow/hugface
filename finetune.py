@@ -3,8 +3,19 @@ from datasets import Dataset
 from huggingface_hub import hf_hub_download
 from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer
+import torch
+import numpy as np
+from transformers import AutoModelForSequenceClassification
+from sklearn.metrics import accuracy_score, f1_score
 
 tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
+
+# Load FinBERT with a classification head sized for 3 labels
+model = AutoModelForSequenceClassification.from_pretrained(
+    "ProsusAI/finbert",
+    num_labels=3,
+)
+
 
 
 # (keep the hf_hub_download line from before — zip_path is already set)
@@ -40,18 +51,35 @@ train_df, test_df = train_test_split(
 	random_state = 42,
 )
 
-def tokenizer_batch(batch):
-	return tokenizer(
-		batch["sentence"],
-		padding = True,
-		truncation = True,
-	)
+# convert to HF Datasets FIRST
+train_ds = Dataset.from_pandas(train_df, preserve_index=False)
+test_ds  = Dataset.from_pandas(test_df,  preserve_index=False)
 
-train_tok = trains_df.map(tokenizer_batch, batched=True)
-test_tok = test_df.map(tokenizer_batch, batched=True)
+def tokenize_batch(batch):
+    return tokenizer(batch["sentence"], padding=True, truncation=True)
+
+# now .map() is the HF version, which accepts batched=True
+train_tok = train_ds.map(tokenize_batch, batched=True)
+test_tok  = test_ds.map(tokenize_batch,  batched=True)
 
 print(train_tok)
 print(train_tok[0].keys())
+
+# ---- class weights: inverse to frequency ----
+# counts in FinBERT-id order: [positive(0), negative(1), neutral(2)]
+counts = np.array([887, 420, 2146])
+weights = counts.sum() / (len(counts) * counts)
+
+class_weights = torch.tensor(weights, dtype=torch.float)
+print(class_weights)
+
+def compute_metrics(eval_pred):
+    logits, labels = eval_pred
+    preds = np.argmax(logits, axis=1)        # blank: which axis picks the winning class?
+    return {
+        "accuracy": accuracy_score(labels, preds),
+        "f1_macro": f1_score(labels, preds, average="macro"),
+    }
 
 # print(train_df["labels"].value_counts(normalize = True))
 # print(test_df["labels"].value_counts(normalize = True))
