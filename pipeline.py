@@ -10,7 +10,7 @@ print("MPS built:", torch.backends.mps.is_built())
 # print(ds["train"].features)
 
 # Create a sentiment-analysis pipeline using FinBERT
-_MODEL = "ProsusAI/finbert"
+_MODEL = "./finbert-finetuned/checkpoint-519"
 tokenizer = AutoTokenizer.from_pretrained(_MODEL)
 model = AutoModelForSequenceClassification.from_pretrained(_MODEL)
 model.eval() #inference mode 
@@ -50,10 +50,3 @@ for r in score_headlines([
 ]):
     print(r)
 
-# Map string labels → integer IDs matching FinBERT's id2label
-label2id = {"positive": 0, "negative": 1, "neutral": ????}   # blank: neutral's id
-
-df["labels"] = df["label"].map(label2id)
-
-print(df[["label", "labels"]].head())
-print(df["labels"].value_counts()) 

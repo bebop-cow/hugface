@@ -151,3 +151,41 @@ print(baseline_trainer.evaluate())
 # 8. TRAINING goes here next — a weighted Trainer using class_weights,
 #    then re-evaluate and compare macro-F1 against the baseline above.
 # ---------------------------------------------------------------------------
+
+import torch.nn as nn
+
+# Custom Trainer: same as the stock one, but loss is class-weighted.
+class WeightedTrainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        logits = outputs.logits
+        # weighted cross-entropy — weights live on the same device as the model
+        loss_fn = nn.CrossEntropyLoss(weight=class_weights.to(logits.device))
+        loss = loss_fn(logits, labels)
+        return (loss, outputs) if return_outputs else loss
+
+
+train_args = TrainingArguments(
+    output_dir="./finbert-finetuned",
+    per_device_train_batch_size=16,
+    per_device_eval_batch_size=32,
+    num_train_epochs=3,               
+    eval_strategy="epoch",               # evaluate after each epoch
+    save_strategy="epoch",
+    learning_rate=2e-5,                  # standard fine-tuning LR for BERT
+    report_to="none",
+)
+
+trainer = WeightedTrainer(
+    model=model,
+    args=train_args,
+    train_dataset=train_tok,
+    eval_dataset=test_tok,
+    compute_metrics=compute_metrics,
+)
+
+trainer.train()
+
+print("After fine-tuning:")
+print(trainer.evaluate())
