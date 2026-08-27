@@ -1,30 +1,38 @@
-import zipfile, pandas as pd
-from datasets import Dataset
+"""
+finetune.py — Fine-tune FinBERT on Financial PhraseBank for headline sentiment.
+
+Pipeline: load data -> parse -> map labels -> stratified split -> tokenize
+          -> class weights -> metrics -> baseline eval -> (train next).
+
+Run once to produce a fine-tuned model on disk; the screener tool loads it later.
+"""
+
+import zipfile
+import numpy as np
+import pandas as pd
+import torch
 from huggingface_hub import hf_hub_download
 from sklearn.model_selection import train_test_split
-from transformers import AutoTokenizer
-import torch
-import numpy as np
-from transformers import AutoModelForSequenceClassification
 from sklearn.metrics import accuracy_score, f1_score
-from transformers import Trainer, TrainingArguments
-
-tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-
-# Load FinBERT with a classification head sized for 3 labels
-model = AutoModelForSequenceClassification.from_pretrained(
-    "ProsusAI/finbert",
-    num_labels=3,
+from datasets import Dataset
+from transformers import (
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+    Trainer,
+    TrainingArguments,
 )
 
+MODEL_NAME = "ProsusAI/finbert"
 
-
-# (keep the hf_hub_download line from before — zip_path is already set)
+# ---------------------------------------------------------------------------
+# 1. Get the data — download the zip, read the 75%-agreement text file inside.
+#    Each line looks like:  some financial sentence@label
+# ---------------------------------------------------------------------------
 zip_path = hf_hub_download(
     repo_id="takala/financial_phrasebank",
     repo_type="dataset",
     filename="data/FinancialPhraseBank-v1.0.zip",
-    )
+)
 
 inner = "FinancialPhraseBank-v1.0/Sentences_75Agree.txt"
 
@@ -32,82 +40,114 @@ sentences, labels = [], []
 with zipfile.ZipFile(zip_path) as z:
     with z.open(inner) as f:
         for raw_line in f:
-            line = raw_line.decode("latin-1").strip()   # note: latin-1, see below
+            line = raw_line.decode("latin-1").strip()  # file isn't UTF-8
             if not line:
                 continue
-            text, label = line.rsplit("@",1)                          # blank: split into the two parts
+            text, label = line.rsplit("@", 1)          # split on the LAST @
             sentences.append(text)
             labels.append(label)
 
 df = pd.DataFrame({"sentence": sentences, "label": labels})
-# Map string labels → integer IDs matching FinBERT's id2label
-label2id = {"positive": 0, "negative": 1, "neutral": 2}   # blank: neutral's id
 
+# ---------------------------------------------------------------------------
+# 2. Map string labels -> integer IDs, MATCHING FinBERT's own ordering.
+#    (positive=0, negative=1, neutral=2) — must match the pretrained head.
+# ---------------------------------------------------------------------------
+label2id = {"positive": 0, "negative": 1, "neutral": 2}
 df["labels"] = df["label"].map(label2id)
 
+print("Class counts:\n", df["label"].value_counts(), "\n")
+
+# ---------------------------------------------------------------------------
+# 3. Stratified train/test split — preserves the 62/26/12 class balance in
+#    both halves so the held-out test set is a faithful exam.
+# ---------------------------------------------------------------------------
 train_df, test_df = train_test_split(
-	df, 
-	test_size=0.2,
-	stratify = df["labels"],
-	random_state = 42,
+    df,
+    test_size=0.2,
+    stratify=df["labels"],
+    random_state=42,
 )
 
-# convert to HF Datasets FIRST
+# ---------------------------------------------------------------------------
+# 4. Convert to HF Datasets, then tokenize. Fixed-length padding (=128) keeps
+#    every row the same length so the Trainer's collator can batch cleanly.
+# ---------------------------------------------------------------------------
 train_ds = Dataset.from_pandas(train_df, preserve_index=False)
-test_ds  = Dataset.from_pandas(test_df,  preserve_index=False)
+test_ds = Dataset.from_pandas(test_df, preserve_index=False)
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
 
 def tokenize_batch(batch):
-    return tokenizer(batch["sentence"], padding=True, truncation=True)
+    return tokenizer(
+        batch["sentence"],
+        padding="max_length",
+        truncation=True,
+        max_length=128,
+    )
 
-# now .map() is the HF version, which accepts batched=True
+
 train_tok = train_ds.map(tokenize_batch, batched=True)
-test_tok  = test_ds.map(tokenize_batch,  batched=True)
+test_tok = test_ds.map(tokenize_batch, batched=True)
 
-print(train_tok)
-print(train_tok[0].keys())
+# Keep only the columns the model/collator needs (drop the string columns that
+# would otherwise confuse the collator).
+keep = ["input_ids", "attention_mask", "labels"]
+train_tok = train_tok.remove_columns([c for c in train_tok.column_names if c not in keep])
+test_tok = test_tok.remove_columns([c for c in test_tok.column_names if c not in keep])
 
-# ---- class weights: inverse to frequency ----
-# counts in FinBERT-id order: [positive(0), negative(1), neutral(2)]
-counts = np.array([887, 420, 2146])
+print("Tokenized columns:", train_tok.column_names, "\n")
+
+# ---------------------------------------------------------------------------
+# 5. Class weights — inverse to frequency, so the rare NEGATIVE class gets a
+#    louder voice in the loss. Order matches FinBERT ids: [pos, neg, neu].
+# ---------------------------------------------------------------------------
+counts = np.array([
+    (df["labels"] == 0).sum(),  # positive
+    (df["labels"] == 1).sum(),  # negative
+    (df["labels"] == 2).sum(),  # neutral
+])
 weights = counts.sum() / (len(counts) * counts)
-
 class_weights = torch.tensor(weights, dtype=torch.float)
-print(class_weights)
+print("Class weights [pos, neg, neu]:", class_weights, "\n")
 
+# ---------------------------------------------------------------------------
+# 6. Metrics — accuracy as a sanity reference, macro-F1 as the honest number
+#    (weights each class equally, so the rare classes actually count).
+# ---------------------------------------------------------------------------
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
-    preds = np.argmax(logits, axis=1)        # blank: which axis picks the winning class?
+    preds = np.argmax(logits, axis=1)
     return {
         "accuracy": accuracy_score(labels, preds),
         "f1_macro": f1_score(labels, preds, average="macro"),
     }
 
-args = TrainingArguments(
+
+# ---------------------------------------------------------------------------
+# 7. Load the trainable model and measure the BASELINE on the held-out set
+#    BEFORE any fine-tuning — this is the number training must beat.
+# ---------------------------------------------------------------------------
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=3)
+
+eval_args = TrainingArguments(
     output_dir="./finbert-finetuned",
     per_device_eval_batch_size=32,
-    use_mps_device=True,          # your Apple Silicon GPU
-    report_to="none",             # skip external logging
+    report_to="none",
 )
 
 baseline_trainer = Trainer(
     model=model,
-    args=args,
-    eval_dataset=train_tok,            # blank: which tokenized set do we evaluate on?
+    args=eval_args,
+    eval_dataset=test_tok,
     compute_metrics=compute_metrics,
 )
 
+print("Baseline (no fine-tuning):")
 print(baseline_trainer.evaluate())
 
-# print(train_df["labels"].value_counts(normalize = True))
-# print(test_df["labels"].value_counts(normalize = True))
-
-# #converts both to HF datasets for the Trainer
-# trains_ds = Dataset.from_pandas(train_df, preserve_index=False)
-# test_ds = Dataset.from_pandas(test_df, preserve_index=False)
-
-# print(df[["label", "labels"]].head())
-# print(df["labels"].value_counts()) 
-
-# print(df.shape)
-# print(df.head())
-# print(df["label"].value_counts())
+# ---------------------------------------------------------------------------
+# 8. TRAINING goes here next — a weighted Trainer using class_weights,
+#    then re-evaluate and compare macro-F1 against the baseline above.
+# ---------------------------------------------------------------------------
