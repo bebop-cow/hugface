@@ -1,27 +1,51 @@
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 import torch.nn.functional as F
+print("MPS available:", torch.backends.mps.is_available())
+print("MPS built:", torch.backends.mps.is_built())
+
+# from datasets import load_dataset
+# ds = load_dataset("takala/financial_phrasebank", "sentences_75agree")
+# print(ds["train"][0])
+# print(ds["train"].features)
 
 # Create a sentiment-analysis pipeline using FinBERT
-tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert", output_attentions =True)
+_MODEL = "ProsusAI/finbert"
+tokenizer = AutoTokenizer.from_pretrained(_MODEL)
+model = AutoModelForSequenceClassification.from_pretrained(_MODEL)
+model.eval() #inference mode 
 
 
-headlines = [
+def score_headlines(headlines, min_conf=0.5):
+	"""Takes a list of headlines, returns a list of signal dicts"""
+	inputs = tokenizer(headlines, return_tensors="pt", padding=True, truncations=True)
+
+	with torch.no_grad():
+		logits = model(**inputs).logits
+
+	probs = F.softmax(logits, dim = 1)
+
+	results = []
+	for row in probs:
+		pos, neg, neu = row[0].item(), row[1].item(), row[2].item()
+		signed = pos - neg
+		conf = max(pos, neg, neu)
+		# apply the confidence floor
+		if conf < min_conf:
+			label = "neutral"
+		else:
+			label = model.config.id2label[row.argmax().item()]
+		results.append({
+			"signed": round(signed, 4),
+			"label": label, 
+			"pos": round(pos, 4), "neg": round(neg, 4), "neu": round(neu, 4),
+			})
+		return results
+
+# quick test
+for r in score_headlines([
     "Company posts record profit, raises guidance",
     "Firm slashes dividend amid mounting losses",
     "Board to meet Thursday to review options",
-]
-inputs = tokenizer(headline, return_tensors="pt", padding=True, truncations=True)
-
-with torch.no_grad():
-	outputs = model(**inputs)
-
-# outputs.logits is shape (num_headlines, 3) — raw scores, not yet probabilities
-logits = outputs.logits
-
-# Turn each row of logits into a probability distribution over the 3 classes
-probs = F.softmax(logits, dim=1)
-
-print(probs)
-print(model.config.id2label)            # tells us which column is which class
+]):
+    print(r)
