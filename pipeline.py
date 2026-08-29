@@ -11,6 +11,7 @@ print("MPS built:", torch.backends.mps.is_built())
 
 # Create a sentiment-analysis pipeline using FinBERT
 _MODEL = "./finbert-finetuned/checkpoint-519"
+# _MODEL = "ProsusAI/finbert"
 tokenizer = AutoTokenizer.from_pretrained(_MODEL)
 model = AutoModelForSequenceClassification.from_pretrained(_MODEL)
 model.eval() #inference mode 
@@ -18,7 +19,7 @@ model.eval() #inference mode
 
 def score_headlines(headlines, min_conf=0.5):
 	"""Takes a list of headlines, returns a list of signal dicts"""
-	inputs = tokenizer(headlines, return_tensors="pt", padding=True, truncations=True)
+	inputs = tokenizer(headlines, return_tensors="pt", padding=True, truncation=True)
 
 	with torch.no_grad():
 		logits = model(**inputs).logits
@@ -40,7 +41,7 @@ def score_headlines(headlines, min_conf=0.5):
 			"label": label, 
 			"pos": round(pos, 4), "neg": round(neg, 4), "neu": round(neu, 4),
 			})
-		return results
+	return results
 
 # quick test
 for r in score_headlines([
@@ -49,4 +50,5 @@ for r in score_headlines([
     "Board to meet Thursday to review options",
 ]):
     print(r)
+    print(model.config.id2label)
 
