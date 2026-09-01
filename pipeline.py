@@ -10,8 +10,8 @@ print("MPS built:", torch.backends.mps.is_built())
 # print(ds["train"].features)
 
 # Create a sentiment-analysis pipeline using FinBERT
-_MODEL = "./finbert-finetuned/checkpoint-519"
-# _MODEL = "ProsusAI/finbert"
+#_MODEL = "./finbert-finetuned/checkpoint-519"
+_MODEL = "ProsusAI/finbert"
 tokenizer = AutoTokenizer.from_pretrained(_MODEL)
 model = AutoModelForSequenceClassification.from_pretrained(_MODEL)
 model.eval() #inference mode 
@@ -44,11 +44,12 @@ def score_headlines(headlines, min_conf=0.5):
 	return results
 
 # quick test
-for r in score_headlines([
-    "Company posts record profit, raises guidance",
-    "Firm slashes dividend amid mounting losses",
-    "Board to meet Thursday to review options",
-]):
-    print(r)
-    print(model.config.id2label)
+if __name__ == '__main__':
+	for r in score_headlines([
+		"Company posts record profit, raises guidance",
+		"Firm slashes dividend amid mounting losses",
+		"Board to meet Thursday to review options",
+	]):
+		print(r)
+		print(model.config.id2label)
 
