@@ -3,7 +3,7 @@ import nltk
 nltk.download("punkt_tab")
 from nltk.tokenize import sent_tokenize
 from pipeline import score_headlines
-import pandas as pd
+
 
 text = open("speech.txt").read()
 
@@ -42,11 +42,5 @@ print("\n MOST POSITIVE:")
 for s, sig in scored[-5:]:
 	print(round(sig,3), s)
 
-cols = ["date", "time", "open", "high", "low", "close", "volume"]
-df = pd.read_csv("ibm_1min.csv", names=cols)
-
-print(df.shape)
-print(df.head())
-print(df.tail())
 
 
