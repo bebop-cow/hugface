@@ -14,7 +14,7 @@ def market_move(df, spoken_time, window_minutes=15):
     return (after["close"] - before["close"]) / before["close"]
 
 # 3. the join
-start = pd.Timestamp("2026-06-03 10:00")
+start = pd.Timestamp("2026-07-15 12:00")
 
 rows = []
 for i, (sent, score) in enumerate(zip(sentences, results)):
@@ -33,3 +33,12 @@ paired = pd.DataFrame(rows)
 print(paired.shape)
 print(paired.head())
 print(paired["signed"].corr(paired["move"]))
+
+avg_sentiment = paired["signed"].mean()      # whole speech's tone
+print("Avg speech sentiment:", avg_sentiment)
+
+# open move: 9:30 → 10:00 on July 15
+open_price = df[df["ts"] >= pd.Timestamp("2026-07-15 09:30")].iloc[0]["close"]
+later_price = df[df["ts"] >= pd.Timestamp("2026-07-15 10:00")].iloc[0]["close"]
+open_move = (later_price - open_price) / open_price
+print("IBM open move:", open_move)
