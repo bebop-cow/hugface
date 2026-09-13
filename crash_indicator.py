@@ -22,3 +22,11 @@ corpdebt_q = corpdebt.resample("QE").last()
 
 print(traders_q.tail())
 print(corpdebt_q.tail())
+
+# real rate = nominal - year-over-year inflation
+inflation_yoy = cpi_q.pct_change(4) * 100      # 4 quarters = 1 year
+real_rate = fedfunds_q - inflation_yoy
+print(real_rate.tail())
+
+def zscore(series):
+    return (series - series.mean()) / series.std()
