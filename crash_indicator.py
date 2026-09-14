@@ -53,8 +53,22 @@ scores["indicator"] = scores.mean(axis=1)
 # print(scores.tail(8))
 
 ## backtest
-sp500 = fetch_series("SP500").resample("QE").last()
-# drawdown: how far below the running peak
-peak = sp500.cummax()
-drawdown = (sp500 - peak) / peak * 100     # negative = below peak
-print(drawdown.tail())
+import yfinance as yf
+sp = yf.download("^GSPC", start="1990-01-01")["Close"].resample("QE").last()
+sp = sp.squeeze()
+peak = sp.cummax()
+drawdown = (sp - peak) / peak * 100
+
+print(drawdown.min())
+print(drawdown.idxmin())
+
+bt = pd.DataFrame({
+    "indicator": scores["indicator"],
+    "drawdown": drawdown,
+    }).dropna()
+
+# was the indicator high before drawdowns?
+print(bt.tail())
+print(bt["indicator"].corr(bt["drawdown"]))
+
+print("indicator starts:", scores.index.min())
