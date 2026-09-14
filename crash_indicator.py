@@ -47,4 +47,7 @@ scores = pd.DataFrame({
 }).dropna()
 
 scores["indicator"] = scores.mean(axis=1)
-print(scores.tail())
+print("traders ends:", traders_q.index.max())
+print("deficit ends:", deficit_q.index.max())
+print("real_rate ends:", real_rate.index.max())
+print("corpdebt ends:", (corpdebt_q/gdp).index.max())
