@@ -9,6 +9,13 @@ def fetch_series(series_id):
 def zscore(series):
     return (series - series.mean()) / series.std()
 
+def rolling_zscore(series, window=40):     # 40 quarters = 10 years
+    mean = series.rolling(window).mean()
+    std = series.rolling(window).std()
+    return (series - mean) / std
+
+
+
 # pull all four
 traders   = fetch_series("NFCI")
 deficit   = fetch_series("FYFSGDA188S")
@@ -29,7 +36,7 @@ corpdebt_q = corpdebt.resample("QE").last()
 
 mktcap = fetch_series("NCBEILQ027S").resample("QE").last()   # corp equities held
 valuation = mktcap / gdp
-valuation_score = zscore(valuation) 
+valuation_score = rolling_zscore(valuation)
 
 # print(traders_q.tail())
 # print(corpdebt_q.tail())
