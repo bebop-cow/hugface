@@ -14,12 +14,15 @@ cpi       = fetch_series("CPIAUCSL")
 corpdebt  = fetch_series("NCBDBIQ027S")
 
 # resample each to quarterly, taking the last value in each quarter
+receipts = fetch_series("FGRECPT").resample("QE").last()
+outlays  = fetch_series("FGEXPND").resample("QE").last()
+gdp = fetch_series("GDP").resample("QE").last()
+deficit_q  = (outlays - receipts) /gdp * 100
 traders_q  = traders.resample("QE").last()
-deficit_q  = deficit.resample("QE").last().ffill()
 fedfunds_q = fedfunds.resample("QE").last()
 cpi_q      = cpi.resample("QE").last()
 corpdebt_q = corpdebt.resample("QE").last()
-gdp = fetch_series("GDP").resample("QE").last()
+
 
 # print(traders_q.tail())
 # print(corpdebt_q.tail())
@@ -47,7 +50,11 @@ scores = pd.DataFrame({
 }).dropna()
 
 scores["indicator"] = scores.mean(axis=1)
-print("traders ends:", traders_q.index.max())
-print("deficit ends:", deficit_q.index.max())
-print("real_rate ends:", real_rate.index.max())
-print("corpdebt ends:", (corpdebt_q/gdp).index.max())
+# print(scores.tail(8))
+
+## backtest
+sp500 = fetch_series("SP500").resample("QE").last()
+# drawdown: how far below the running peak
+peak = sp500.cummax()
+drawdown = (sp500 - peak) / peak * 100     # negative = below peak
+print(drawdown.tail())
