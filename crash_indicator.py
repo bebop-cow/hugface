@@ -70,5 +70,3 @@ bt = pd.DataFrame({
 # was the indicator high before drawdowns?
 print(bt.tail())
 print(bt["indicator"].corr(bt["drawdown"]))
-
-print("indicator starts:", scores.index.min())
