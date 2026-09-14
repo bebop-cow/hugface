@@ -15,7 +15,7 @@ corpdebt  = fetch_series("NCBDBIQ027S")
 
 # resample each to quarterly, taking the last value in each quarter
 traders_q  = traders.resample("QE").last()
-deficit_q  = deficit.resample("QE").last()
+deficit_q  = deficit.resample("QE").last().ffill()
 fedfunds_q = fedfunds.resample("QE").last()
 cpi_q      = cpi.resample("QE").last()
 corpdebt_q = corpdebt.resample("QE").last()
