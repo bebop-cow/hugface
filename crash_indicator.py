@@ -54,19 +54,17 @@ scores["indicator"] = scores.mean(axis=1)
 
 ## backtest
 import yfinance as yf
-sp = yf.download("^GSPC", start="1990-01-01")["Close"].resample("QE").last()
-sp = sp.squeeze()
-peak = sp.cummax()
-drawdown = (sp - peak) / peak * 100
+# crash onset quarters (peak, just before the fall)
+crashes = ["2000-03-31", "2007-09-30", "2020-03-31", "2022-03-31"]
 
-print(drawdown.min())
-print(drawdown.idxmin())
+for c in crashes:
+    val = scores["indicator"].asof(c)     # indicator value at/before that date
+    print(c, "indicator:", round(val, 2))
 
-bt = pd.DataFrame({
-    "indicator": scores["indicator"],
-    "drawdown": drawdown,
-    }).dropna()
+print("\nhistorical median:", round(scores["indicator"].median(), 2))
+print("historical 90th pct:", round(scores["indicator"].quantile(0.9), 2))
 
-# was the indicator high before drawdowns?
-print(bt.tail())
-print(bt["indicator"].corr(bt["drawdown"]))
+high = scores["indicator"] > 0.89        # above 90th percentile
+print("quarters above 0.89:", high.sum())
+print("dates:")
+print(scores.index[high].tolist())
