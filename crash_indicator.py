@@ -19,14 +19,32 @@ deficit_q  = deficit.resample("QE").last()
 fedfunds_q = fedfunds.resample("QE").last()
 cpi_q      = cpi.resample("QE").last()
 corpdebt_q = corpdebt.resample("QE").last()
+gdp = fetch_series("GDP").resample("QE").last()
 
-print(traders_q.tail())
-print(corpdebt_q.tail())
+# print(traders_q.tail())
+# print(corpdebt_q.tail())
 
 # real rate = nominal - year-over-year inflation
 inflation_yoy = cpi_q.pct_change(4) * 100      # 4 quarters = 1 year
 real_rate = fedfunds_q - inflation_yoy
-print(real_rate.tail())
+# print(real_rate.tail())
 
 def zscore(series):
     return (series - series.mean()) / series.std()
+
+# each score: higher = more irresponsible
+traders_score  = zscore(-traders_q)                    # flip: low NFCI = risky
+treasury_score = zscore(deficit_q)                     # high deficit = risky
+fed_score      = zscore(-real_rate)                    # flip: low real rate = risky
+company_score  = zscore(corpdebt_q / gdp)              # debt/GDP, high = risky
+
+# combine into one indicator
+scores = pd.DataFrame({
+    "traders": traders_score,
+    "treasury": treasury_score,
+    "fed": fed_score,
+    "company": company_score,
+}).dropna()
+
+scores["indicator"] = scores.mean(axis=1)
+print(scores.tail())
